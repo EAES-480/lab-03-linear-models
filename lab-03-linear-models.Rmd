@@ -1,0 +1,452 @@
+---
+title: "EAES 480 — Lab 03: Linear Models on an Andes-to-Amazon Gradient"
+author: "Student: ____________________"
+date: "`r format(Sys.Date(), '%Y-%m-%d')`"
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+    number_sections: true
+    df_print: paged
+---
+
+<!--
+EAES 480 LAB CONTRACT
+- Discuss concepts freely; type your own code; cite collaborators.
+- Your work must knit (Run All) from a clean session.
+- Put ALL code in chunks (not in the Console only).
+-->
+
+# Study context
+
+This lab uses tidy site- and canopy-structure data derived from:
+
+Asner, G.P., Anderson, C.B., Martin, R.E., Knapp, D.E., Tupayachi, R., Sinca, F., Malhi, Y. (2014)  
+**Landscape-scale changes in forest structure and functional traits along an Andes-to-Amazon elevation gradient**. *Biogeosciences*, 11, 843–856. https://doi.org/10.5194/bg-11-843-2014
+
+Your task is to build intuition for **simple linear models** (one predictor, one response), including:
+- visualizing correlations,
+- fitting regression lines,
+- interpreting coefficients,
+- and diagnosing fit using residuals.
+
+---
+
+# Learning goals
+
+By the end of this lab you should be able to:
+
+1. Join tidy datasets (sites + canopy structure) into one analysis table
+2. Visualize bivariate relationships with scatterplots and fitted lines
+3. Fit a simple linear model with `lm()`
+4. Interpret coefficients using `broom::tidy()`
+5. Overlay the fitted line with `geom_abline()` using the estimated coefficients
+6. Assess model fit using residual plots (resid vs fitted, histogram/density, QQ plot)
+
+---
+
+# Deliverables + expectations
+
+Submit:
+
+- Your completed `.Rmd`
+- A knitted HTML (or PDF if requested)
+
+Rubric (lightweight):
+
+- **Code correctness (40%)**: runs cleanly, outputs sensible
+- **Interpretation quality (40%)**: answers reflect modeling + residual thinking
+- **Reproducibility (20%)**: knits cleanly; no console-only objects
+
+> Collaborators (if any): _______________________________
+
+---
+
+# Setup (run this first)
+
+```{r setup, echo=TRUE, message=FALSE, warning=FALSE, eval = F}
+# GOAL: Load packages, read data, join tables, and create a clean analysis dataset.
+
+library(tidyverse)
+library(janitor)
+library(skimr)
+library(broom) # used for looking at model fits
+
+set.seed(___)  # TODO: choose an integer seed
+
+# NOTE: In the course repo, put both CSVs in a ./data/ folder.
+# TODO: Fill in file paths.
+sites_path     <- "___"  # e.g., "data/andes_amazon_sites.csv"
+structure_path <- "___"  # e.g., "data/andes_amazon_structure.csv"
+
+sites_raw     <- readr::read_csv(sites_path)
+structure_raw <- readr::read_csv(structure_path)
+
+# Clean names to snake_case for easier typing
+sites     <- sites_raw %>% clean_names()
+structure <- structure_raw %>% clean_names()
+
+# Join on site ID
+df_raw <- left_join(structure, sites, by = "site")
+
+# CHECKS
+glimpse(df_raw)
+skim(df_raw)
+```
+
+### Debugging checklist (before asking for help)
+
+- Did you run the setup chunk first?
+- Are your column names in **snake_case** (use `names(df_raw)`)?
+- If you see `NA` values, did you filter them appropriately before modeling?
+- Are your variables numeric (use `glimpse()`)?
+
+---
+
+# Data dictionary (quick)
+
+Fill in at least **5** more rows, including your `x` and `y`. Reference the paper as needed.
+
+```{r dictionary, echo=TRUE, eval = F}
+names(df_raw)
+```
+
+| Column | Units | Meaning | Notes |
+|---|---|---|---|
+| site | id | site identifier | join key |
+| elevation_m | m | elevation | predictor candidate |
+| canopy_height_m | m | canopy height | response candidate |
+| mat_c | °C | mean annual temperature | predictor candidate |
+| map_mm | mm | mean annual precipitation | predictor candidate |
+| soil_order | category | soil order | potential grouping |
+| ___ |  |  |  |
+
+**Prompt (2–3 sentences):** What does one row/observation represent here, and why do we need to *join* two tables?
+
+> *Write your answer here.*
+
+---
+
+# Choose your model variables
+
+You will fit a **simple linear regression**:
+
+$$
+y = \\\\beta_0 + \\\\beta_1 x + \\\\epsilon
+$$
+
+Choose:
+- one numeric **response** `y_var`
+- one numeric **predictor** `x_var`
+
+Suggested pairs (pick ONE):
+- `canopy_height_m` ~ `elevation_m`
+- `gap_size_lambda` ~ `elevation_m`
+- `canopy_shape_p_h` ~ `elevation_m`
+- `canopy_height_m` ~ `mat_c`
+- `canopy_height_m` ~ `map_mm`
+
+```{r choose_model, echo=TRUE, eval = F}
+y_var <- "___"  # TODO: response variable name
+x_var <- "___"  # TODO: predictor variable name
+
+y_var # use these as a reminder, for filling code below, use the actual variable name without ""
+x_var
+```
+
+Create an analysis dataset with complete cases for your chosen variables:
+
+```{r complete_cases, echo=TRUE, eval = F}
+df <- df_raw %>%
+  filter(
+    !is.na(___), 
+    !is.na(___)
+  )
+
+# CHECK
+nrow(df)
+glimpse(df)
+```
+
+**Prompt (1 sentence):** How has the filtering altered the dataset? Be specific.
+
+> *Write your answer here.*
+
+---
+
+# Visualize the relationship (scatter + smooth)
+
+## Scatterplot (no model yet)
+
+```{r scatter, echo=TRUE, eval = F}
+# GOAL: See the relationship before fitting a model.
+
+ggplot(df, aes(x = ___, y = ___)) +
+  geom_point(size = 3, alpha = 0.8) +
+  labs(
+    x = ___,
+    y = ,
+    title = "Scatterplot"
+  ) +
+  theme_classic(base_size = 20)
+```
+
+**Prompt (2–3 sentences):** Describe the pattern. Is it roughly linear? Any obvious outliers or clusters?
+
+> *Write your answer here.*
+
+---
+
+## Add a regression line with `geom_smooth(method = "lm")`
+
+```{r smooth_lm, echo=TRUE, eval = F}
+# GOAL: Add the best-fitting line (least squares) visually.
+
+ggplot(df, aes(x = ___, y = ___)) +
+  geom_point(size = 3, alpha = 0.8) +
+  geom_smooth(method = "lm", se = ___) +   # TODO: choose TRUE/FALSE
+  labs(
+    x = ___,
+    y = ___,
+    title = "Scatterplot with linear fit"
+  ) +
+  theme_classic(base_size = 20)
+```
+
+**Prompt (2 sentences):** What does the shaded band represent (if you kept `se = TRUE`)? Would you trust this model for prediction beyond the data range?
+
+> *Write your answer here.*
+
+---
+
+# Fit a simple linear model with `lm()`
+
+```{r fit_lm, echo=TRUE, eval = F}
+# GOAL: Fit y ~ x using lm().
+
+m1 <- lm(___ ~ ___, data = df)  # TODO: fill in y_var and x_var correctly
+m1
+```
+
+## Coefficients with `tidy()`
+
+```{r tidy_coef, echo=TRUE, eval = F}
+coef_tbl <- tidy(m1)
+coef_tbl
+```
+
+**Prompt (3 sentences):**
+- Interpret the slope ($\\\\beta_1$) *with units*.
+- Interpret the intercept ($\\\\beta_0$) and say whether it is physically meaningful here.
+- Is the direction of the slope consistent with your scatterplot?
+
+> *Write your answer here.*
+
+---
+
+# Plot the fitted line manually using `geom_abline()`
+
+`geom_smooth(method="lm")` fits the model internally.  
+Here you will extract the fitted coefficients and plot the line explicitly.
+
+```{r abline, echo=TRUE, eval = F}
+# GOAL: Overlay the fitted line using intercept + slope.
+# TODO: Extract the intercept and slope from m1.
+
+b0 <- coef(m1)[["___"]]     # TODO: intercept term name (usually "(Intercept)")
+b1 <- coef(m1)[["___"]]     # TODO: slope term name (x variable)
+
+b0
+b1
+
+ggplot(df, aes(x = ___, y = ___)) +
+  geom_point(size = 3, alpha = 0.8) +
+  geom_abline(intercept = b0, slope = b1, linewidth = 1.2) +
+  labs(
+    x = ___,
+    y = ___,
+    title = "Same fitted line, drawn explicitly"
+  ) +
+  theme_classic(base_size = 20)
+```
+
+**Prompt (1–2 sentences):** Why is it useful to be able to draw the line from coefficients?
+
+> *Write your answer here.*
+
+---
+
+# Model fit and residual diagnostics (DataCamp Ch. 3)
+
+Residuals are where model assumptions live.
+
+We’ll use `augment()` to get fitted values and residuals.
+
+```{r augment, echo=TRUE, eval = F}
+aug <- augment(m1)
+glimpse(aug)
+```
+
+## Residuals vs fitted values
+
+```{r resid_fitted, echo=TRUE, eval = F}
+# GOAL: Look for patterns (curvature), changing variance (funnel), clusters.
+
+ggplot(aug, aes(x = .fitted, y = .resid)) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  geom_point(size = 3, alpha = 0.8) +
+  labs(
+    x = "Fitted values",
+    y = "Residuals",
+    title = "Residuals vs fitted"
+  ) +
+  theme_classic(base_size = 20)
+```
+
+**Prompt (2–3 sentences):** Do you see curvature (nonlinearity), a funnel (heteroscedasticity), or clusters (missing grouping variable)?
+
+> *Write your answer here.*
+
+---
+
+## Residual distribution (histogram + density)
+
+```{r resid_hist, echo=TRUE, eval = F}
+# GOAL: Check whether residuals are roughly symmetric and centered at 0.
+
+ggplot(aug, aes(x = .resid)) +
+  geom_histogram(aes(y = after_stat(density)), bins = ___, alpha = 0.5) +  # TODO bins
+  geom_density(linewidth = 1.1) +
+  labs(
+    x = "Residuals",
+    y = "Density",
+    title = "Residual distribution"
+  ) +
+  theme_classic(base_size = 20)
+```
+
+**Prompt (2 sentences):** Are residuals symmetric? If not, what does that suggest about the model or the data?
+
+> *Write your answer here.*
+
+---
+
+## QQ plot (normality check)
+
+```{r qq, echo=TRUE, eval = F}
+# GOAL: Compare standardized residuals to a Normal distribution.
+
+ggplot(aug, aes(sample = .std.resid)) +
+  stat_qq(alpha = 0.7) +
+  stat_qq_line() +
+  labs(
+    x = "Theoretical quantiles",
+    y = "Std. residual quantiles",
+    title = "QQ plot of standardized residuals"
+  ) +
+  theme_classic(base_size = 20)
+```
+
+**Prompt (2 sentences):** Where does the QQ plot deviate most? What does that imply (tails/outliers/skew)?
+
+> *Write your answer here.*
+
+---
+
+# Model summary (R² and RMSE)
+
+```{r glance, echo=TRUE, eval = F}
+glance(m1) %>% select(r.squared, adj.r.squared, sigma)
+```
+
+Interpretation:
+- **R²**: fraction of variance explained (in-sample)
+- **sigma**: typical residual size (RMSE) in units of **y**
+
+**Prompt (2–3 sentences):** Does a high R² automatically mean a “good” environmental model? Explain with one example of what could still be wrong.
+
+> *Write your answer here.*
+
+---
+
+# Interpretation checkpoints (graded writing)
+
+### Checkpoint 1: Before the model (2–3 sentences)
+Describe the relationship you expected between your chosen x and y. Why?
+
+> *Write your answer here.*
+
+### Checkpoint 2: After fitting (3–4 sentences)
+Interpret the slope and evaluate whether the model seems plausible **mechanistically** (not just statistically).
+
+> *Write your answer here.*
+
+### Checkpoint 3: After residual checks (3–4 sentences)
+Use your residual plots to diagnose the model. Name at least **one** assumption that looks reasonable and **one** that might be violated.
+
+> *Write your answer here.*
+
+### Checkpoint 4: Reporting (2–4 sentences)
+If you could report **one figure** and **one table** from this lab to a environmental science reader, which would you choose and why?
+
+> *Write your answer here.*
+
+---
+
+# 13. Extension 
+
+Choose **one**.
+
+## 13.1 Add a grouping variable (soil order) as color or facets
+
+```{r extension_group, echo=TRUE, eval = F}
+# GOAL: See whether grouping explains structure in the residuals.
+# TODO: add color = soil_order (or facet_wrap).
+
+ggplot(df, aes(x = ___, y = ___, color = ___)) +
+  geom_point(size = 3, alpha = 0.8) +
+  geom_smooth(method = "lm", se = FALSE) +
+  theme_classic(base_size = 20) +
+  labs(x = ___, y = ___, color = "soil_order")
+```
+
+**Prompt (2 sentences):** Does grouping change your interpretation of the relationship?
+
+> *Write your answer here.*
+
+## 13.2 Fit a second model and compare
+
+Fit an alternative predictor and compare residual patterns and R².
+
+```{r extension_compare, echo=TRUE, eval = F}
+# TODO: choose an alternative predictor (e.g., mat_c instead of elevation_m)
+m2 <- lm(___ ~ ___, data = df)
+
+tibble(
+  model = c("m1", "m2"),
+  r2    = c(glance(m1)$r.squared, glance(m2)$r.squared),
+  rmse  = c(glance(m1)$sigma,     glance(m2)$sigma)
+)
+```
+
+**Prompt (2–3 sentences):** Which model would you trust more, and why? Use residual evidence.
+
+> *Write your answer here.*
+
+---
+
+# 14. Submission + self-check
+
+## Before you knit (Run All)
+- [ ] Setup chunk runs without errors
+- [ ] Data join happened (df_raw has both canopy + climate columns)
+- [ ] All chunks run top-to-bottom
+- [ ] No objects created only in the Console
+- [ ] Interpretation answers are complete sentences
+
+## After you knit
+- [ ] Figures appear in the output
+- [ ] Tables render and are readable
+- [ ] Your selected x and y are clearly stated in the document
+
+**Save, commit, push, and submit your GitHub repo link on Canvas.**
